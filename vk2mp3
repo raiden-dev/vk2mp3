@@ -1,0 +1,58 @@
+#!/bin/bash
+
+m3u_url="$1"
+out="$2"
+base_url="${m3u_url%%index.m3u8*}"
+tmp=".tmp/${m3u_url##*index.m3u8?extra=}"
+cypher=""
+key_uri=""
+key=""
+iv=""
+tsname=""
+
+if [[ -z "${m3u_url}" ]]; then
+  echo "Please pass url to index.m3u8 url as the first argument"
+  exit 1
+fi
+
+if [[ -z "${out}" ]]; then
+  out="out.mp3"
+fi
+
+mkdir -p "${tmp}"
+
+curl "${m3u_url}" |
+while read line; do
+  if [[ "${line}" == "#EXT-X-KEY:"* ]]; then
+    if [[ "${line}" == *"METHOD=AES-128"* ]]; then
+      cypher="aes-128-cbc"
+      key_uri="$(echo "${line}" | sed -E 's/.*URI="([^"]+)".*/\1/')"
+    else
+      cypher=""
+      key_uri=""
+    fi
+
+    continue
+  fi
+
+  if [[ "${line::1}" == "#" ]]; then
+    continue
+  fi
+
+  if [[ "${line}" =~ .*\.ts ]]; then
+    tsname="${BASH_REMATCH[0]}"
+    echo "file ${tsname}" >> "${tmp}/concat.txt"
+
+    if [[ "${cypher}" ]]; then
+      if [[ "${key_uri}" ]]; then
+        key="$(curl "${key_uri}" | hexdump -C | head -1 | sed 's/00000000//;s/|.*//;s/ //g')"
+      fi
+
+      curl "${base_url}/${line}" | openssl "${cypher}" -d -iv "${iv}" -K "${key}" > "${tmp}/${tsname}"
+    else
+      curl "${base_url}/${line}" > "${tmp}/${tsname}"
+    fi
+  fi
+done
+
+ffmpeg -f concat -safe 0 -i "${tmp}/concat.txt" -c copy "${out}"
