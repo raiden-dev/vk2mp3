@@ -1,5 +1,9 @@
 #!/bin/bash
 
+##
+# Download mp3 from VK.com
+##
+
 m3u_url="$1"
 out="$2"
 base_url="${m3u_url%%index.m3u8*}"
